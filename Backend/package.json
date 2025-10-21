@@ -1,0 +1,33 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "prisma": "^6.17.1"
+  },
+  "dependencies": {
+    "@bitauth/libauth": "^3.0.0",
+    "@prisma/client": "^6.17.1",
+    "@psf/bch-js": "^6.8.2",
+    "backblaze-b2": "^1.7.1",
+    "bip32": "^5.0.0",
+    "bip39": "^3.1.0",
+    "bitbox-sdk": "^0.0.1",
+    "bs58": "^6.0.0",
+    "cashaddrjs": "^0.4.4",
+    "cors": "^2.8.5",
+    "crypto": "^1.0.1",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "path": "^0.12.7",
+    "tiny-secp256k1": "^2.2.4"
+  }
+}
