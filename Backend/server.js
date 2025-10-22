@@ -10,6 +10,7 @@ import userRoutes from './routes/user.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import videoRoutes from './routes/videoRoutes.js';
+import watchRoutes from './routes/watchRoutes.js';
 
 // ← ADD THIS BLOCK
 async function testConnection() {
@@ -42,6 +43,8 @@ app.use(express.json());
 app.use('/api/generate', walletRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/video', videoRoutes);
+
+app.use('/api/videos',watchRoutes);
 
 // Example: serve static files
 app.use(express.static(path.join(__dirname, 'public')));

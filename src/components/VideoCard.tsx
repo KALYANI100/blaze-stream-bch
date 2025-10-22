@@ -88,6 +88,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 interface VideoCardProps {
   id: string;
@@ -120,7 +121,7 @@ export const VideoCard = ({
   showContract = false,
   showActions = false
 }: VideoCardProps) => {
-  
+  const navigate = useNavigate();
   // **NEW: Copy contract to clipboard**
   const copyContract = () => {
     if (contractAddress) {
@@ -129,9 +130,13 @@ export const VideoCard = ({
       console.log("✅ Contract copied!");
     }
   };
+console.log(thumbnail);
+ const handleVideoClick = () => {
+    navigate(`/watch/id=${id}`);
+  };
 
   return (
-    <Card className="group overflow-hidden border-border hover:border-primary/50 transition-all duration-300 hover:shadow-[0_0_30px_rgba(0,212,92,0.2)] bg-card">
+    <Card className="group overflow-hidden border-border hover:border-primary/50 transition-all duration-300 hover:shadow-[0_0_30px_rgba(0,212,92,0.2)] bg-card" onClick={handleVideoClick}>
       
       {/* Thumbnail */}
       <div className="relative aspect-video overflow-hidden bg-muted">

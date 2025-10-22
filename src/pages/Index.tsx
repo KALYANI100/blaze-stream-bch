@@ -1,11 +1,63 @@
+// import { useState, useEffect } from "react";
 // import { Header } from "@/components/Header";
 // import { HeroSection } from "@/components/HeroSection";
 // import { CategoryBar } from "@/components/CategoryBar";
 // import { VideoCard } from "@/components/VideoCard";
+// import { Loader2 } from "lucide-react";
 
 // const Index = () => {
-//   // Mock video data
-//   const trendingVideos = [
+//   const [trendingVideos, setTrendingVideos] = useState([]);
+//   const [loading, setLoading] = useState(true);
+
+//   // **1. FETCH REAL TRENDING VIDEOS**
+//   useEffect(() => {
+//     fetchTrendingVideos();
+//   }, []);
+
+//   const fetchTrendingVideos = async () => {
+//     try {
+//       setLoading(true);
+      
+//       const response = await fetch("http://localhost:3001/api/video/trending", {
+//         headers: { 
+//           "Content-Type": "application/json"
+//         }
+//       });
+      
+//       const data = await response.json();
+      
+//       if (data.success) {
+//         // **2. TRANSFORM DATA - ADD MISSING likes**
+//         const videosWithLikes = data.videos.map((video) => ({
+//           ...video,
+//           likes: video.likes || Math.floor(Math.random() * 1000) + 100, // Fallback
+//           views: typeof video.views === 'string' ? parseInt(video.views.replace('K', '000')) : video.views
+//         }));
+        
+//         setTrendingVideos(videosWithLikes);
+//       } else {
+//         // **3. FALLBACK - TRANSFORM MOCK DATA**
+//         setTrendingVideos(mockVideos.map(video => ({
+//           ...video,
+//           likes: Math.floor(Math.random() * 1000) + 100,
+//           views: parseInt(video.views.replace('K', '000'))
+//         })));
+//       }
+//     } catch (error) {
+//       console.error("Trending fetch error:", error);
+//       // **4. USE MOCK DATA AS BACKUP**
+//       setTrendingVideos(mockVideos.map(video => ({
+//         ...video,
+//         likes: Math.floor(Math.random() * 1000) + 100,
+//         views: parseInt(video.views.replace('K', '000'))
+//       })));
+//     } finally {
+//       setLoading(false);
+//     }
+//   };
+
+//   // **5. MOCK DATA - BACKWARD COMPATIBLE**
+//   const mockVideos = [
 //     {
 //       id: "1",
 //       thumbnail: "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=500&q=80",
@@ -80,6 +132,17 @@
 //     }
 //   ];
 
+//   if (loading) {
+//     return (
+//       <div className="min-h-screen bg-background flex items-center justify-center">
+//         <div className="text-center">
+//           <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
+//           <p className="text-muted-foreground">Loading trending videos...</p>
+//         </div>
+//       </div>
+//     );
+//   }
+
 //   return (
 //     <div className="min-h-screen bg-background">
 //       <Header />
@@ -95,7 +158,13 @@
         
 //         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade-in">
 //           {trendingVideos.map((video) => (
-//             <VideoCard key={video.id} {...video} />
+//             <VideoCard 
+//               key={video.id} 
+//               {...video} 
+//               // **6. DEFAULT PROPS FOR EXPLORE**
+//               showContract={false}
+//               showActions={false}
+//             />
 //           ))}
 //         </div>
 //       </section>
@@ -159,6 +228,7 @@
 // export default Index;
 
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { HeroSection } from "@/components/HeroSection";
 import { CategoryBar } from "@/components/CategoryBar";
@@ -168,6 +238,7 @@ import { Loader2 } from "lucide-react";
 const Index = () => {
   const [trendingVideos, setTrendingVideos] = useState([]);
   const [loading, setLoading] = useState(true);
+const navigate = useNavigate();
 
   // **1. FETCH REAL TRENDING VIDEOS**
   useEffect(() => {
@@ -178,7 +249,7 @@ const Index = () => {
     try {
       setLoading(true);
       
-      const response = await fetch("http://localhost:3001/api/videos/trending", {
+      const response = await fetch("http://localhost:3001/api/video/trending", {
         headers: { 
           "Content-Type": "application/json"
         }
@@ -190,7 +261,7 @@ const Index = () => {
         // **2. TRANSFORM DATA - ADD MISSING likes**
         const videosWithLikes = data.videos.map((video) => ({
           ...video,
-          likes: video.likes || Math.floor(Math.random() * 1000) + 100, // Fallback
+          likes: video.likes || Math.floor(Math.random() * 1000) + 100,
           views: typeof video.views === 'string' ? parseInt(video.views.replace('K', '000')) : video.views
         }));
         
@@ -216,7 +287,12 @@ const Index = () => {
     }
   };
 
-  // **5. MOCK DATA - BACKWARD COMPATIBLE**
+  // **5. NAVIGATE TO WATCH PAGE ON VIDEO CLICK**
+  const handleVideoClick = (video) => {
+    navigate(`/watch?id=${video.id}`);
+  };
+
+  // **6. MOCK DATA - BACKWARD COMPATIBLE**
   const mockVideos = [
     {
       id: "1",
@@ -316,12 +392,13 @@ const Index = () => {
           <p className="text-muted-foreground">Most popular videos this week</p>
         </div>
         
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade-in">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade-in" >
           {trendingVideos.map((video) => (
             <VideoCard 
               key={video.id} 
-              {...video} 
-              // **6. DEFAULT PROPS FOR EXPLORE**
+              {...video}
+               onClick={() => handleVideoClick(video)}
+              // **8. DEFAULT PROPS FOR EXPLORE**
               showContract={false}
               showActions={false}
             />
@@ -329,7 +406,7 @@ const Index = () => {
         </div>
       </section>
 
-      {/* Footer */}
+      {/* Footer - SAME AS BEFORE */}
       <footer className="border-t border-border mt-20">
         <div className="container mx-auto px-4 py-12">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
