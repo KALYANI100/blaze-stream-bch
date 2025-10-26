@@ -14,4 +14,6 @@ router.post('/:id/like', protect, watchController.likeVideo);
 router.post('/:id/tip', protect, watchController.tipVideo);
 router.post('/:id/purchase', protect, watchController.purchaseVideo);  // ✅ UNLOCKING
 
+router.post("/:id/view", protect, watchController.incrementView);
+
 module.exports = router;

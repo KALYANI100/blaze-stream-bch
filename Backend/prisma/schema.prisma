@@ -275,7 +275,11 @@ model View {
   videoId   String
   user      User?    @relation(fields: [userId], references: [id])
   userId    String?
+
+  @@unique([videoId, userId]) // one view per logged-in user
+  @@unique([videoId, ipAddress, userAgent]) // one view per anonymous user
 }
+
 
 // =======================
 // Earning
@@ -331,3 +335,4 @@ model Category {
 
   videos      Video[]
 }
+

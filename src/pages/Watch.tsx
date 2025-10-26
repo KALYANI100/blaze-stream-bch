@@ -595,6 +595,42 @@ if (videoId.startsWith('id=')) videoId = videoId.slice(3);
 
   // ------------------- inside Watch component -------------------
 
+  const recordView = async () => {
+  if (!videoId) return;
+  if (videoId.startsWith('id=')) videoId = videoId.slice(3);
+
+  try {
+    const ip = ""; // optional: get IP if needed
+    const userAgent = navigator.userAgent;
+
+    const res = await fetch(`http://localhost:3001/api/videos/${videoId}/view`, {
+      method: "POST",
+      headers: {
+        Authorization: token ? `Bearer ${token}` : "",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        userAgent,
+        ipAddress: ip
+      }),
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      // update frontend view count
+      setVideo((prev) => prev ? { ...prev, views: prev.views + 1 } : prev);
+    }
+  } catch (err) {
+    console.error("Error recording view:", err);
+  }
+};
+
+useEffect(() => {
+  if (videoId) {
+    recordView();
+  }
+}, [videoId]);
+
 // HANDLE UNLOCK VIDEO
 const handleUnlock = async () => {
   if (!videoId || !token) return;
@@ -754,9 +790,7 @@ const handleLike = async () => {
               <Card className="p-4">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center">
-                    <span className="text-xl font-bold text-primary">
-                      {video.creator.username.toUpperCase()}
-                    </span>
+                   
                   </div>
                   <div>
                     <h3 className="font-semibold">{video.creator.username}</h3>

@@ -357,6 +357,54 @@ export const tipVideo = async (req, res) => {
   }
 };
 
+export const incrementView = async (req, res) => {
+  const { id: videoId } = req.params;
+  const userId = req.user?.id || null; // logged-in user
+  const ip = req.ip;
+  const userAgent = req.headers["user-agent"] || "";
+
+  try {
+
+    const alreadyViewed = await prisma.view.findFirst({
+  where: {
+    videoId,
+    userId: userId || undefined,
+    ipAddress: userId ? undefined : ip,
+    userAgent: userId ? undefined : userAgent,
+  },
+});
+
+if (alreadyViewed) {
+  return res.json({ success: true, message: "Already viewed" });
+}
+
+    // Try to create a unique view
+    await prisma.view.create({
+      data: {
+        videoId,
+        userId: userId || undefined,
+        ipAddress: userId ? undefined : ip,
+        userAgent: userId ? undefined : userAgent,
+      },
+    });
+
+    // Increment the video's viewCount
+    const video = await prisma.video.update({
+      where: { id: videoId },
+      data: { viewCount: { increment: 1 } },
+    });
+
+    return res.json({ success: true, views: video.viewCount });
+  } catch (err) {
+    // Unique constraint violation → already viewed
+    if (err.code === "P2002") {
+      return res.json({ success: true, message: "Already viewed" });
+    }
+    console.error(err);
+    return res.status(500).json({ success: false, error: "Failed to increment view" });
+  }
+};
+
 // ------------------- HELPER: Send BCH from sender → receiver -------------------
 async function sendBchTransaction(sender, receiver, amount) {
   // 1️⃣ List unspent UTXOs for sender
