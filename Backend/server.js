@@ -11,7 +11,7 @@ import dashboardRoutes from './routes/dashboardRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import videoRoutes from './routes/videoRoutes.js';
 import watchRoutes from './routes/watchRoutes.js';
-
+import profileRoutes from './routes/profileRoutes.js';
 // ← ADD THIS BLOCK
 async function testConnection() {
   try {
@@ -46,6 +46,7 @@ app.use('/api/video', videoRoutes);
 
 app.use('/api/videos',watchRoutes);
 
+app.use('/api/profile', profileRoutes);
 // Example: serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 
