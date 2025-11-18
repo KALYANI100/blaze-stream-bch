@@ -1,0 +1,46 @@
+{
+  "contractName": "TipContract",
+  "constructorInputs": [
+    {
+      "name": "creator",
+      "type": "pubkey"
+    },
+    {
+      "name": "minTip",
+      "type": "int"
+    }
+  ],
+  "abi": [
+    {
+      "name": "tip",
+      "inputs": [
+        {
+          "name": "creatorSig",
+          "type": "sig"
+        }
+      ]
+    }
+  ],
+  "bytecode": "OP_0 OP_OUTPUTVALUE OP_ROT OP_GREATERTHANOREQUAL OP_VERIFY OP_CHECKSIG",
+  "source": "pragma cashscript ^0.12.0;\r\n\r\ncontract TipContract(pubkey creator, int minTip) {\r\n    function tip(sig creatorSig) {\r\n        // Check that the first output sends at least `minTip` satoshis\r\n        require(tx.outputs[0].value >= minTip);\r\n        // Verify the creator's signature\r\n        require(checkSig(creatorSig, creator));\r\n    }\r\n}\r\n",
+  "debug": {
+    "bytecode": "00cc7ba269ac",
+    "sourceMap": "6:27:6:28;:16::35:1;:39::45:0;:16:::1;:8::47;8::8",
+    "logs": [],
+    "requires": [
+      {
+        "ip": 6,
+        "line": 6
+      },
+      {
+        "ip": 8,
+        "line": 8
+      }
+    ]
+  },
+  "compiler": {
+    "name": "cashc",
+    "version": "0.12.0"
+  },
+  "updatedAt": "2025-11-07T05:39:45.412Z"
+}

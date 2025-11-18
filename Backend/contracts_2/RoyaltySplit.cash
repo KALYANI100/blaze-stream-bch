@@ -1,0 +1,8 @@
+pragma cashscript ^0.12.0;
+
+contract RoyaltySplit(pubkey creator1, pubkey creator2) {
+    function split(sig sig1, sig sig2) {
+        require(checkSig(sig1, creator1));
+        require(checkSig(sig2, creator2));
+    }
+}

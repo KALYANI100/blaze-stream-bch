@@ -22,6 +22,7 @@
     "bitbox-sdk": "^0.0.1",
     "bs58": "^6.0.0",
     "cashaddrjs": "^0.4.4",
+    "cashscript": "^0.12.0",
     "cors": "^2.8.5",
     "crypto": "^1.0.1",
     "express": "^5.1.0",

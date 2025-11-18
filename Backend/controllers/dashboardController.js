@@ -5,6 +5,7 @@ import { getSignedUrl } from '../utils/b2SignedUrl.js';
 import multer from 'multer';
 import crypto from 'crypto';
 import http from 'http';
+import fs from "fs";
 
 
 class BCHRPC {
@@ -150,97 +151,24 @@ export const getMyVideos = async (req, res) => {
   }
 };
 
-// 3. UPLOAD VIDEO (USES YOUR LIVE CONTRACTS) ✅
+
 // export const uploadVideoWithContract = async (req, res) => {
 //   try {
 //     const { title, description, category, tags, accessType = 'FREE', price = '0' } = req.body;
 //     const userId = req.user.id;
 
-//     // UPLOAD TO B2
+//     // ✅ Upload video to Backblaze B2
 //     const videoFile = req.files.video[0];
 //     const videoName = `videos/${Date.now()}_${videoFile.originalname}`;
 //     const videoUrl = await uploadToB2(videoName, videoFile.buffer, videoFile.mimetype);
 
+//     // ✅ Upload thumbnail if provided
 //     let thumbnailUrl = null;
 //     if (req.files.thumbnail?.[0]) {
 //       const thumbFile = req.files.thumbnail[0];
 //       const thumbName = `thumbnails/${Date.now()}_${thumbFile.originalname}`;
 //       thumbnailUrl = await uploadToB2(thumbName, thumbFile.buffer, thumbFile.mimetype);
 //     }
-
-//     // **USE YOUR LIVE CONTRACT**
-//     const contractAddress = DEPLOYED_CONTRACTS[accessType.replace('_', '').toUpperCase()] || null;
-
-//     // **VIDEO HASH** (for on-chain registration)
-//     const videoId = `video_${Date.now()}`;
-//     const videoHash = crypto.createHash('sha256')
-//       .update(`${videoId}|${videoUrl}|${req.user.walletAddress}`)
-//       .digest('hex');
-
-//     // **FUND CONTRACT** (send price to YOUR deployed contract)
-//     if (accessType !== 'FREE' && contractAddress) {
-//       await rpc.call('sendtoaddress', [contractAddress, parseFloat(price)]);
-//     }
-
-//     // SAVE TO DB
-//     const video = await prisma.video.create({
-//       data: {
-//         title,
-//         description,
-//         videoUrl,
-//         thumbnailUrl,
-//         categoryId: category || 'default',
-//         tags: tags ? tags.split(',') : [],
-//         accessType,
-//         price: accessType === 'PAY_PER_VIEW' ? parseFloat(price) : null,
-//         isPremium: accessType !== 'FREE',
-//         creatorId: userId,
-//         status: 'READY',
-//         videoHash,
-//         contractAddress,
-//         duration: Math.floor(Math.random() * 600 + 60),
-//         fileSize: BigInt(videoFile.size)
-//       }
-//     });
-
-//     // NOTIFICATION
-//     await prisma.notification.create({
-//       data: {
-//         type: 'VIDEO_APPROVED',
-//         title: '🎬 Video LIVE!',
-//         message: `Your video "${title}" is now accessible via contract: ${contractAddress?.slice(0, 16)}...`,
-//         userId
-//       }
-//     });
-
-//     res.json({
-//       success: true,
-//       message: `🎥 "${title}" LIVE on ${contractAddress?.slice(0, 16)}...!`,
-//       video: {
-//         id: video.id,
-//         title,
-//         contractAddress,
-//         videoHash,
-//         accessType,
-//         price: video.price
-//       }
-//     });
-
-//   } catch (error) {
-//     console.error('Upload error:', error);
-//     res.status(500).json({ success: false, error: error.message });
-//   }
-// };
-
-
-// export const uploadVideoWithContract = async (req, res) => {
-//   try {
-//     const { title, description, category, tags, accessType = 'FREE', price = '0' } = req.body;
-//     const userId = req.user.id;
-
-//     // ✅ Dummy video and thumbnail URLs for testing
-//     const videoUrl = 'https://example.com/dummy-video.mp4';
-//     const thumbnailUrl = 'https://via.placeholder.com/300x200.png?text=Dummy+Thumbnail';
 
 //     // ✅ Use your live contract (if available)
 //     const contractAddress = DEPLOYED_CONTRACTS[accessType.replace('_', '').toUpperCase()] || null;
@@ -251,23 +179,20 @@ export const getMyVideos = async (req, res) => {
 //       .update(`${videoId}|${videoUrl}|${req.user.walletAddress}`)
 //       .digest('hex');
 
-//     // ✅ If premium, simulate funding contract
-//    // For testing, skip sending BCH
-// if (accessType !== 'FREE' && contractAddress && parseFloat(price) > 0) {
-//   await rpc.call('sendtoaddress', [contractAddress, parseFloat(price)]);
-// }
-
-
+//     // ✅ If premium, fund contract (only if price > 0)
+//     if (accessType !== 'FREE' && contractAddress && parseFloat(price) > 0) {
+//       await rpc.call('sendtoaddress', [contractAddress, parseFloat(price)]);
+//     }
 
 //     // ✅ Save video metadata in DB
 //     const video = await prisma.video.create({
 //       data: {
-//          videoId,
+//         videoId,
 //         title,
 //         description,
 //         videoUrl,
 //         thumbnailUrl,
-//         categoryId: '1', 
+//         categoryId: '1', // default category for testing
 //         tags: tags ? tags.split(',') : [],
 //         accessType,
 //         price: accessType === 'PAY_PER_VIEW' ? parseFloat(price) : null,
@@ -277,7 +202,7 @@ export const getMyVideos = async (req, res) => {
 //         videoHash,
 //         contractAddress,
 //         duration: Math.floor(Math.random() * 600 + 60),
-//         fileSize: BigInt(1024 * 500), // pretend 500 KB
+//         fileSize: BigInt(videoFile.size),
 //       },
 //     });
 
@@ -311,17 +236,31 @@ export const getMyVideos = async (req, res) => {
 //   }
 // };
 
+
 export const uploadVideoWithContract = async (req, res) => {
   try {
-    const { title, description, category, tags, accessType = 'FREE', price = '0' } = req.body;
+    const {
+      title,
+      description,
+      category,
+      tags,
+      accessType = "FREE",
+      price = "0",
+      // Remove these - we'll generate them in backend
+      // contractAddress,
+      // transactionHash,
+    } = req.body;
+
     const userId = req.user.id;
 
-    // ✅ Upload video to Backblaze B2
+    // ------------------------------------------
+    // 1️⃣ Upload Video to Backblaze B2
+    // ------------------------------------------
     const videoFile = req.files.video[0];
     const videoName = `videos/${Date.now()}_${videoFile.originalname}`;
     const videoUrl = await uploadToB2(videoName, videoFile.buffer, videoFile.mimetype);
 
-    // ✅ Upload thumbnail if provided
+    // Thumbnail
     let thumbnailUrl = null;
     if (req.files.thumbnail?.[0]) {
       const thumbFile = req.files.thumbnail[0];
@@ -329,68 +268,161 @@ export const uploadVideoWithContract = async (req, res) => {
       thumbnailUrl = await uploadToB2(thumbName, thumbFile.buffer, thumbFile.mimetype);
     }
 
-    // ✅ Use your live contract (if available)
-    const contractAddress = DEPLOYED_CONTRACTS[accessType.replace('_', '').toUpperCase()] || null;
+    // ------------------------------------------
+    // 2️⃣ DEPLOY CONTRACT (Backend Only - for PAY_PER_VIEW)
+    // ------------------------------------------
+    let contractAddress = null;
+    let transactionHash = null;
+    let videoHash = null;
 
-    // ✅ Create hash for on-chain reference
-    const videoId = `video_${Date.now()}`;
-    const videoHash = crypto.createHash('sha256')
-      .update(`${videoId}|${videoUrl}|${req.user.walletAddress}`)
-      .digest('hex');
+    if (accessType === "PAY_PER_VIEW") {
+      try {
+        // Get creator's wallet info
+        const creatorInfo = await rpc.call('getaddressinfo', [req.user.walletAddress]);
+        
+        // Convert price to satoshis
+        const priceSatoshis = Math.round(parseFloat(price) * 100000000);
+        
+        // Generate video hash
+        const videoId = `video_${Date.now()}`;
+        videoHash = crypto.createHash("sha256")
+          .update(`${videoId}|${videoUrl}|${creatorInfo.pubkey}`)
+          .digest("hex");
 
-    // ✅ If premium, fund contract (only if price > 0)
-    if (accessType !== 'FREE' && contractAddress && parseFloat(price) > 0) {
-      await rpc.call('sendtoaddress', [contractAddress, parseFloat(price)]);
+        // Deploy PayPerView contract
+        const contractData = await deployPayPerViewContract(priceSatoshis, creatorInfo.pubkey, videoHash);
+        
+        contractAddress = contractData.address;
+        transactionHash = contractData.txHash;
+
+        console.log(`✅ Contract deployed for video: ${title}`);
+        console.log(`   Address: ${contractAddress}`);
+        console.log(`   TX: ${transactionHash}`);
+        console.log(`   Price: ${price} BCH`);
+
+      } catch (contractError) {
+        console.error("❌ Contract deployment failed:", contractError);
+        // Continue without contract - video will be saved as regular upload
+        // Or you can choose to fail the entire upload:
+        // return res.status(500).json({ 
+        //   success: false, 
+        //   error: `Contract deployment failed: ${contractError.message}` 
+        // });
+      }
     }
 
-    // ✅ Save video metadata in DB
+    // If no contract was deployed (FREE content or contract failed), generate basic hash
+    if (!videoHash) {
+      const videoId = `video_${Date.now()}`;
+      videoHash = crypto.createHash("sha256")
+        .update(`${videoId}|${videoUrl}|${req.user.walletAddress}`)
+        .digest("hex");
+    }
+
+    // ------------------------------------------
+    // 3️⃣ Store in DB
+    // ------------------------------------------
     const video = await prisma.video.create({
       data: {
-        videoId,
+        videoId: `video_${Date.now()}`,
         title,
         description,
         videoUrl,
         thumbnailUrl,
-        categoryId: '1', // default category for testing
-        tags: tags ? tags.split(',') : [],
+        categoryId: "1",
+        tags: tags ? tags.split(",") : [],
         accessType,
-        price: accessType === 'PAY_PER_VIEW' ? parseFloat(price) : null,
-        isPremium: accessType !== 'FREE',
+        price: accessType === "PAY_PER_VIEW" ? parseFloat(price) : null,
+        isPremium: accessType !== "FREE",
         creatorId: userId,
-        status: 'READY',
+        status: "READY",
         videoHash,
         contractAddress,
+        transactionHash,
         duration: Math.floor(Math.random() * 600 + 60),
         fileSize: BigInt(videoFile.size),
       },
     });
 
-    // ✅ Send notification
+    // ------------------------------------------
+    // 4️⃣ Notification
+    // ------------------------------------------
+    let notificationMessage = `Your video "${title}" is now live.`;
+    if (contractAddress) {
+      notificationMessage = `Your PayPerView video "${title}" is LIVE at ${contractAddress.slice(0, 16)}...!`;
+    }
+
     await prisma.notification.create({
       data: {
-        type: 'VIDEO_APPROVED',
-        title: '🎬 Video LIVE!',
-        message: `Your video "${title}" is now accessible via contract: ${contractAddress?.slice(0, 16)}...`,
+        type: "VIDEO_APPROVED",
+        title: "🎬 Video LIVE!",
+        message: notificationMessage,
         userId,
       },
     });
 
-    // ✅ Response
-    res.json({
+    // ------------------------------------------
+    // 5️⃣ Response
+    // ------------------------------------------
+    const responseData = {
       success: true,
-      message: `🎥 "${title}" LIVE on ${contractAddress?.slice(0, 16)}...!`,
+      message: `🎥 "${title}" uploaded successfully!`,
       video: {
         id: video.id,
         title,
-        contractAddress,
         videoHash,
         accessType,
         price: video.price,
       },
-    });
+    };
+
+    // Add contract data if available
+    if (contractAddress) {
+      responseData.contractAddress = contractAddress;
+      responseData.transactionHash = transactionHash;
+      responseData.message = `🎬 "${title}" PayPerView contract deployed!`;
+    }
+
+    res.json(responseData);
 
   } catch (error) {
-    console.error('Upload error:', error);
+    console.error("Upload error:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
+// ------------------------------------------
+// CONTRACT DEPLOYMENT HELPER FUNCTION
+// ------------------------------------------
+async function deployPayPerViewContract(priceSatoshis, creatorPubKey, videoHash) {
+  try {
+    // Load your PayPerView contract JSON
+    const PAY_PER_VIEW_CONTRACT = JSON.parse(
+      fs.readFileSync('./contracts_2/build/PayPerViewToken.json', 'utf8')
+    );
+
+    // Use the debug bytecode (hex) from your JSON
+    const bytecode = PAY_PER_VIEW_CONTRACT.debug?.bytecode || PAY_PER_VIEW_CONTRACT.bytecode;
+
+    // Compile contract to get address
+    const decodeResult = await rpc.call('decodescript', [bytecode]);
+    const contractAddress = decodeResult.p2sh;
+
+    // Fund the contract with initial amount (optional - or let users fund it)
+    // const txHash = await rpc.call('sendtoaddress', [contractAddress, priceSatoshis / 100000000]);
+
+    // // Mine blocks to confirm
+    // const minerAddress = await rpc.call('getnewaddress');
+    // await rpc.call('generatetoaddress', [2, minerAddress]);
+
+    return {
+      address: contractAddress,
+      txHash: null,
+      bytecode: bytecode
+    };
+
+  } catch (error) {
+    console.error("Contract deployment error:", error);
+    throw new Error(`Failed to deploy contract: ${error.message}`);
+  }
+}

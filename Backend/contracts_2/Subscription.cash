@@ -1,0 +1,8 @@
+pragma cashscript ^0.12.0;
+
+contract Subscription(pubkey creator, int unlockBlock) {
+    function subscribe(sig creatorSig) {
+        require(tx.time >= unlockBlock);    // time or block height check
+        require(checkSig(creatorSig, creator));
+    }
+}

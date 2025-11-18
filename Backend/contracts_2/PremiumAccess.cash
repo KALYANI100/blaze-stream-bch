@@ -1,0 +1,9 @@
+pragma cashscript ^0.12.0;
+
+contract PremiumAccessToken(bytes32 accessTokenCategory) {
+    function unlock(sig userSig, pubkey userKey) {
+        // The user must sign and include the correct CashToken
+        require(checkSig(userSig, userKey));
+        require(tx.inputs[0].tokenCategory == accessTokenCategory);
+    }
+}

@@ -1,0 +1,10 @@
+pragma cashscript ^0.12.0;
+
+contract TipContract(pubkey creator, int minTip) {
+    function tip(sig creatorSig) {
+        // Check that the first output sends at least `minTip` satoshis
+        require(tx.outputs[0].value >= minTip);
+        // Verify the creator's signature
+        require(checkSig(creatorSig, creator));
+    }
+}
