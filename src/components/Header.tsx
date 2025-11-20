@@ -1,30 +1,9 @@
+
 import { useState, useEffect, useRef } from "react";
-import { Search, Wallet, User, Upload, Menu, X, Key, FileKey, FolderOpen } from "lucide-react";
+import { Search, Wallet, User, Upload, Menu, X, Key, FileKey, FolderOpen, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Link, useNavigate } from "react-router-dom";
-
-interface FileSystemAccess {
-  showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
-  showOpenFilePicker?: (options?) => Promise<FileSystemFileHandle[]>;
-}
-
-declare global {
-  interface Window {
-    showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
-    showOpenFilePicker?: (options) => Promise<FileSystemFileHandle[]>;
-  }
-}
-
-interface BackendWalletResponse {
-  success: boolean;
-  wallet: {
-    address: string;
-    pubKey: string;
-    wif: string;
-    privKeyHex: string;
-  };
-}
 
 interface WalletData {
   address: string;
@@ -39,51 +18,47 @@ interface WalletData {
 export const Header = () => {
   const [wallets, setWallets] = useState<WalletData[]>([]);
   const [connectedWallet, setConnectedWallet] = useState<string | null>(null);
+  const [pendingWallet, setPendingWallet] = useState<WalletData | null>(null); // ← NEW
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [importPassword, setImportPassword] = useState("");
   const [selectedWallet, setSelectedWallet] = useState<WalletData | null>(null);
-  const [walletDirectory, setWalletDirectory] = useState<FileSystemDirectoryHandle | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
+  // Load from localStorage on mount
   useEffect(() => {
-    initializeWalletStorage();
+    const savedWallets = localStorage.getItem("bchWallets");
+    const savedConnected = localStorage.getItem("connectedWallet"); // ← NEW
+
+    if (savedWallets) {
+      const parsed: WalletData[] = JSON.parse(savedWallets);
+      setWallets(parsed);
+    }
+
+    if (savedConnected) {
+      setConnectedWallet(savedConnected);
+    } else if (savedWallets) {
+      const parsed: WalletData[] = JSON.parse(savedWallets);
+      if (parsed.length > 0) {
+        const first = parsed[0].address;
+        setConnectedWallet(first);
+        localStorage.setItem("connectedWallet", first); // ← Auto-connect first
+      }
+    }
   }, []);
 
-  // **NEW: Initialize once - check localStorage first**
-  const initializeWalletStorage = async () => {
-    try {
-      // Load saved wallet directory handle from localStorage
-      const savedDirectory = localStorage.getItem("walletDirectoryHandle");
-      const savedWallets = localStorage.getItem("bchWallets");
-
-      if (savedWallets) {
-        const walletData: WalletData[] = JSON.parse(savedWallets);
-        setWallets(walletData);
-        if (walletData.length > 0 && !connectedWallet) {
-          setConnectedWallet(walletData[0].address);
-        }
-      }
-
-      // Restore directory handle if saved
-      if (savedDirectory && window.showDirectoryPicker) {
-        try {
-          // Note: FileSystemHandle can't be directly restored from JSON
-          // We just set the flag that directory is already selected
-          setWalletDirectory({} as FileSystemDirectoryHandle); // Placeholder
-          console.log("✅ Wallet directory restored from localStorage");
-        } catch (error) {
-          console.log("⚠️ Directory handle expired, will ask again");
-          localStorage.removeItem("walletDirectoryHandle");
-        }
-      }
-    } catch (error) {
-      console.error("Error initializing wallet storage:", error);
+  // Save connected wallet to localStorage whenever it changes
+  useEffect(() => {
+    if (connectedWallet) {
+      localStorage.setItem("connectedWallet", connectedWallet);
+    } else {
+      localStorage.removeItem("connectedWallet");
     }
-  };
+  }, [connectedWallet]);
 
+  // Click outside dropdown
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -94,88 +69,9 @@ export const Header = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // **REMOVED: Directory selection - handled in setup**
-
-  const generateBCHWalletFromBackend = async (): Promise<WalletData | null> => {
-    try {
-      setIsGenerating(true);
-      const response = await fetch("http://localhost:3001/api/generate/generate-wallet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      
-      const data: BackendWalletResponse = await response.json();
-      
-      if (data.success && data.wallet) {
-        return {
-          address: data.wallet.address,
-          publicKey: data.wallet.pubKey,
-          privateKey: data.wallet.wif,
-          privateKeyHex: data.wallet.privKeyHex,
-          createdAt: new Date().toISOString(),
-        };
-      }
-      throw new Error("Failed to generate wallet");
-    } catch (error) {
-      console.error("Error generating BCH wallet:", error);
-      alert(`Failed to generate wallet: ${error}`);
-      return null;
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  // **CHANGED: Navigate to /setup instead of creating directly**
-  const handleCreateWallet = () => {
+  const navigateToSetup = () => {
+    setDropdownOpen(false);
     navigate("/setup");
-  };
-
-  const saveWalletWithPassword = async (password: string) => {
-    if (!selectedWallet) return;
-    
-    try {
-      const passwordHash = await simpleHash(password);
-      const encryptedWallet: WalletData = { 
-        ...selectedWallet, 
-        encrypted: true, 
-        passwordHash 
-      };
-      
-      const updatedWallets = [encryptedWallet, ...wallets];
-      setWallets(updatedWallets);
-      setConnectedWallet(selectedWallet.address);
-      localStorage.setItem("bchWallets", JSON.stringify(updatedWallets));
-      
-      // **Save to file system if directory exists**
-      if (walletDirectory) {
-        await saveWalletToFile(encryptedWallet);
-      }
-      
-      setPasswordModalOpen(false);
-      setSelectedWallet(null);
-      setImportPassword("");
-      alert("✅ BCH wallet created and secured successfully!");
-    } catch (error) {
-      console.error("Error saving wallet:", error);
-      alert("❌ Error saving wallet. Please try again.");
-    }
-  };
-
-  const saveWalletToFile = async (wallet: WalletData) => {
-    if (!walletDirectory || !window.showDirectoryPicker) return;
-    try {
-      const fileName = `${wallet.address}.bch.wallet.json`;
-      const directory = await window.showDirectoryPicker(); // Get current dir
-      const fileHandle = await directory.getFileHandle(fileName, { create: true });
-      const writable = await fileHandle.createWritable();
-      await writable.write(JSON.stringify(wallet, null, 2));
-      await writable.close();
-      console.log(`✅ Wallet saved: ${fileName}`);
-    } catch (error) {
-      console.error("Error saving wallet file:", error);
-    }
   };
 
   const simpleHash = async (input: string): Promise<string> => {
@@ -187,38 +83,41 @@ export const Header = () => {
       .join("");
   };
 
-  const getAvatarColor = (wallet?: string | null) => {
+  const getAvatarColor = (addr: string) => {
     const colors = ["bg-blue-500", "bg-green-500", "bg-purple-500", "bg-red-500", "bg-indigo-500", "bg-pink-500"];
-    return colors[wallet?.length % colors.length || 0];
+    return colors[(addr?.length || 0) % colors.length];
   };
 
-  const formatWallet = (wallet: string | null) => 
-    wallet ? `${wallet.slice(0, 8)}...${wallet.slice(-8)}` : "None";
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      if (selectedWallet && wallets.find((w) => w.address === selectedWallet.address)) {
-        unlockWallet();
-      } else {
-        saveWalletWithPassword(importPassword);
-      }
-    }
-  };
+  const formatWallet = (addr: string | null) =>
+    addr ? `${addr.slice(0, 8)}...${addr.slice(-6)}` : "None";
 
   const handleSelectWallet = (wallet: WalletData) => {
     setSelectedWallet(wallet);
+    setPendingWallet(wallet); // ← Instant visual feedback
     setPasswordModalOpen(true);
+    setImportPassword("");
   };
 
- const unlockWallet = async () => {
-  if (!selectedWallet) return;
-  
-  try {
-    const passwordHash = await simpleHash(importPassword);
-    const storedWallet = wallets.find((w) => w.address === selectedWallet.address);
-    
-    if (storedWallet?.passwordHash === passwordHash) {
-      // AUTHENTICATE
+  const closeModal = () => {
+    setPasswordModalOpen(false);
+    setSelectedWallet(null);
+    setPendingWallet(null);
+    setImportPassword("");
+  };
+
+  const unlockWallet = async () => {
+    if (!selectedWallet || !importPassword.trim()) return;
+
+    try {
+      const passwordHash = await simpleHash(importPassword);
+      const storedWallet = wallets.find(w => w.address === selectedWallet.address);
+
+      if (storedWallet?.passwordHash !== passwordHash) {
+        alert("Wrong password");
+        return;
+      }
+
+      // Backend auth
       const authResponse = await fetch("http://localhost:3001/api/auth/wallet-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -229,34 +128,30 @@ export const Header = () => {
       });
 
       const authData = await authResponse.json();
-      
+
       if (authData.success) {
-        // **SAME FORMAT AS userSetup!**
         localStorage.setItem("authToken", authData.token);
         localStorage.setItem("user", JSON.stringify(authData.user));
-        console.log(selectedWallet.address);
-        
+
+        // SUCCESS: Update connected wallet
         setConnectedWallet(selectedWallet.address);
+        setPendingWallet(null);
+        closeModal();
         setDropdownOpen(false);
-        setPasswordModalOpen(false);
-        setSelectedWallet(null);
-        setImportPassword("");
-        
+
         navigate("/dashboard");
-        alert(`✅ Welcome back, ${authData.user.username}!`);
-        
+        alert(`Welcome back, ${authData.user.username || "User"}!`);
       } else if (authData.needsSetup) {
+        closeModal();
         navigate("/setup");
       }
-      
-    } else {
-      alert("❌ Invalid password");
+    } catch (error) {
+      console.error("Login error:", error);
+      alert("Login failed");
     }
-  } catch (error) {
-    console.error("Auth error:", error);
-    alert("❌ Login failed");
-  }
-};
+  };
+
+  const isExistingWallet = selectedWallet && wallets.some(w => w.address === selectedWallet.address);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border glass">
@@ -293,7 +188,7 @@ export const Header = () => {
               </Button>
             </Link>
 
-            {/* **SIMPLIFIED WALLET DROPDOWN** */}
+            {/* Wallet Dropdown */}
             <div className="relative" ref={dropdownRef}>
               <Button
                 variant="hero"
@@ -309,79 +204,78 @@ export const Header = () => {
               </Button>
 
               {dropdownOpen && (
-                <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-xl shadow-2xl p-4 flex flex-col gap-3 z-50 animate-in fade-in-0 slide-in-from-top-2 duration-200">
+                <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-xl shadow-2xl p-4 flex flex-col gap-3 z-50">
                   <div className="flex justify-between items-center">
                     <p className="text-sm font-semibold text-gray-800">Your BCH Wallets</p>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setDropdownOpen(false)}
-                      className="h-6 w-6"
-                    >
-                      <X className="w-4 h-4 text-gray-600" />
+                    <Button variant="ghost" size="icon" onClick={() => setDropdownOpen(false)} className="h-6 w-6">
+                      <X className="w-4 h-4" />
                     </Button>
                   </div>
 
-                  {/* **Directory Status** */}
                   {localStorage.getItem("walletDirectoryHandle") ? (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-2">
-                      <p className="text-xs text-green-700 flex items-center gap-1">
-                        <FolderOpen className="w-3 h-3" />
-                        Wallet folder selected
-                      </p>
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-2 text-xs text-green-700 flex items-center gap-1">
+                      <FolderOpen className="w-3 h-3" /> Wallet folder linked
                     </div>
                   ) : (
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2">
-                      <p className="text-xs text-yellow-700">No wallet folder selected</p>
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 text-xs text-yellow-700">
+                      No folder selected
                     </div>
                   )}
 
-                  {/* Wallet List */}
                   {wallets.length > 0 ? (
-                    <div className="max-h-60 overflow-y-auto">
-                      {wallets.map((wallet, idx) => (
-                        <Button
-                          key={idx}
-                          variant={connectedWallet === wallet.address ? "default" : "outline"}
-                          onClick={() => handleSelectWallet(wallet)}
-                          className={`flex items-center gap-3 text-sm py-2 w-full mb-2 ${
-                            connectedWallet === wallet.address
-                              ? "bg-primary text-white hover:bg-primary/90"
-                              : "hover:bg-gray-100"
-                          }`}
-                        >
-                          <div className={`w-8 h-8 rounded-full ${getAvatarColor(wallet.address)} flex items-center justify-center text-white font-semibold text-xs`}>
-                            {wallet.address.slice(4, 6).toUpperCase()}
-                          </div>
-                          <div className="flex-1 text-left">
-                            <div className="font-medium truncate text-xs">{formatWallet(wallet.address)}</div>
-                            <div className="text-xs text-gray-500">
-                              Created: {new Date(wallet.createdAt).toLocaleDateString()}
+                    <div className="max-h-60 overflow-y-auto space-y-2">
+                      {wallets.map((wallet) => {
+                        const isConnected = connectedWallet === wallet.address;
+                        const isPending = pendingWallet?.address === wallet.address;
+
+                        return (
+                          <Button
+                            key={wallet.address}
+                            variant={isConnected ? "default" : isPending ? "secondary" : "outline"}
+                            onClick={() => handleSelectWallet(wallet)}
+                            className={`w-full justify-start gap-3 text-left ${
+                              isConnected
+                                ? "bg-primary hover:bg-primary/90"
+                                : isPending
+                                ? "ring-2 ring-blue-400 bg-blue-50"
+                                : ""
+                            }`}
+                          >
+                            <div className={`w-8 h-8 rounded-full ${getAvatarColor(wallet.address)} flex items-center justify-center text-white text-xs font-bold`}>
+                              {wallet.address.slice(4, 6).toUpperCase()}
                             </div>
-                          </div>
-                          <Key className="w-4 h-4" />
-                        </Button>
-                      ))}
-                      <hr className="my-2 border-gray-200" />
+                            <div className="flex-1">
+                              <div className="font-medium text-sm">{formatWallet(wallet.address)}</div>
+                              <div className="text-xs opacity-70">
+                                {isConnected ? "Connected" : isPending ? "Unlocking..." : "Click to connect"}
+                              </div>
+                            </div>
+                            {isConnected && <Check className="w-4 h-4" />}
+                          </Button>
+                        );
+                      })}
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-500 italic">No wallets yet</p>
+                    <p className="text-sm text-gray-500 italic py-4 text-center">No wallets yet</p>
                   )}
 
-                  {/* **Navigate to Setup** */}
                   <Button
                     variant="secondary"
-                    size="sm"
-                    onClick={handleCreateWallet}
-                    className="bg-green-500 hover:bg-green-600 text-white gap-2"
+                    className="w-full bg-green-600 hover:bg-green-700 text-white"
+                    onClick={navigateToSetup}
                   >
                     <FileKey className="w-4 h-4" />
                     Create New BCH Wallet
                   </Button>
 
-                  {connectedWallet && (
-                    <p className="mt-2 text-xs text-green-600 truncate">
+                  {connectedWallet && !pendingWallet && (
+                    <p className="text-xs text-green-600 font-medium text-center">
                       Connected: {formatWallet(connectedWallet)}
+                    </p>
+                  )}
+                  {pendingWallet && !connectedWallet && (
+                    <p className="text-xs text-blue-600 font-medium text-center">
+                      Selected: {formatWallet(pendingWallet.address)}
                     </p>
                   )}
                 </div>
@@ -401,63 +295,42 @@ export const Header = () => {
         </div>
       </div>
 
-      {/* Password Modal - SAME AS BEFORE */}
+      {/* Password Modal */}
       {passwordModalOpen && selectedWallet && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-32">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md mt-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
             <h3 className="text-lg font-semibold mb-4">
-              {wallets.find((w) => w.address === selectedWallet.address)
-                ? "🔓 Unlock Wallet"
-                : "🔐 Secure Your Wallet"}
+              {isExistingWallet ? "Unlock Wallet" : "Secure New Wallet"}
             </h3>
-            
+
             <div className="space-y-4">
               <Input
                 type="password"
                 value={importPassword}
                 onChange={(e) => setImportPassword(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder={
-                  wallets.find((w) => w.address === selectedWallet.address)
-                    ? "Enter wallet password"
-                    : "Create strong password"
-                }
+                placeholder={isExistingWallet ? "Enter password" : "Create a strong password"}
                 className="w-full"
                 autoFocus
+                onKeyDown={(e) => e.key === "Enter" && unlockWallet()}
               />
 
-              {selectedWallet && (
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-sm text-gray-600 mb-1">
-                    Address: {formatWallet(selectedWallet.address)}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {localStorage.getItem("walletDirectoryHandle") ? "Saved to wallet folder" : "Browser storage"}
-                  </p>
-                </div>
-              )}
+              <div className="bg-gray-50 rounded-lg p-3 text-sm">
+                <p className="font-medium">{formatWallet(selectedWallet.address)}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {isExistingWallet ? "Enter password to connect" : "This wallet will be encrypted"}
+                </p>
+              </div>
 
               <div className="flex gap-3 justify-end">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setPasswordModalOpen(false);
-                    setSelectedWallet(null);
-                    setImportPassword("");
-                  }}
-                >
+                <Button variant="outline" onClick={closeModal}>
                   Cancel
                 </Button>
                 <Button
-                  onClick={
-                    wallets.find((w) => w.address === selectedWallet.address)
-                      ? unlockWallet
-                      : () => saveWalletWithPassword(importPassword)
-                  }
+                  onClick={unlockWallet}
                   disabled={!importPassword.trim()}
                   className="bg-primary text-white"
                 >
-                  {wallets.find((w) => w.address === selectedWallet.address) ? "Unlock" : "Create & Save"}
+                  {isExistingWallet ? "Unlock & Connect" : "Save & Connect"}
                 </Button>
               </div>
             </div>

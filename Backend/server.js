@@ -12,6 +12,7 @@ import authRoutes from './routes/authRoutes.js';
 import videoRoutes from './routes/videoRoutes.js';
 import watchRoutes from './routes/watchRoutes.js';
 import profileRoutes from './routes/profileRoutes.js';
+import contractRoutes from './routes/contract.js';
 // ← ADD THIS BLOCK
 async function testConnection() {
   try {
@@ -43,12 +44,32 @@ app.use(express.json());
 app.use('/api/generate', walletRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/video', videoRoutes);
+app.use('/api/contract', contractRoutes);
 
 app.use('/api/videos',watchRoutes);
 
 app.use('/api/profile', profileRoutes);
 // Example: serve static files
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.post("/api/bchrpc", async (req, res) => {
+  try {
+    const response = await fetch("http://127.0.0.1:18443/", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Basic " + Buffer.from("bchuser:bchpass").toString("base64"),
+      },
+      body: JSON.stringify(req.body),
+    });
+
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    console.error("RPC Proxy Error:", err);
+    res.status(500).json({ error: "Bitcoin node unreachable" });
+  }
+});
 
 // Start server
 const PORT = process.env.PORT || 3001;

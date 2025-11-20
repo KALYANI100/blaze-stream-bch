@@ -91,11 +91,11 @@ const Explore = () => {
             <Flame className="w-6 h-6 text-secondary" />
             <h2 className="text-2xl font-bold">Hot & Trending</h2>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade-in">
+          {/* <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade-in">
             {trendingVideos.map((video) => (
               <VideoCard key={video.id} {...video} />
             ))}
-          </div>
+          </div> */}
         </section>
 
         {/* Top Creators Leaderboard */}
@@ -149,11 +149,11 @@ const Explore = () => {
             <h2 className="text-2xl font-bold">Community Choice</h2>
             <Badge variant="secondary">Voted by Users</Badge>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade-in">
+          {/* <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade-in">
             {trendingVideos.slice(0, 4).map((video) => (
               <VideoCard key={video.id} {...video} />
             ))}
-          </div>
+          </div> */}
         </section>
       </div>
     </div>

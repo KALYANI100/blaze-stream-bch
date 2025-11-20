@@ -139,6 +139,7 @@ export const getMyVideos = async (req, res) => {
           price: v.price,
           contractAddress: v.contractAddress,
           videoUrl: signedVideoUrl,
+          redeemScript:v.redeemScript
         };
       })
     );
@@ -151,111 +152,12 @@ export const getMyVideos = async (req, res) => {
   }
 };
 
-
-// export const uploadVideoWithContract = async (req, res) => {
-//   try {
-//     const { title, description, category, tags, accessType = 'FREE', price = '0' } = req.body;
-//     const userId = req.user.id;
-
-//     // ✅ Upload video to Backblaze B2
-//     const videoFile = req.files.video[0];
-//     const videoName = `videos/${Date.now()}_${videoFile.originalname}`;
-//     const videoUrl = await uploadToB2(videoName, videoFile.buffer, videoFile.mimetype);
-
-//     // ✅ Upload thumbnail if provided
-//     let thumbnailUrl = null;
-//     if (req.files.thumbnail?.[0]) {
-//       const thumbFile = req.files.thumbnail[0];
-//       const thumbName = `thumbnails/${Date.now()}_${thumbFile.originalname}`;
-//       thumbnailUrl = await uploadToB2(thumbName, thumbFile.buffer, thumbFile.mimetype);
-//     }
-
-//     // ✅ Use your live contract (if available)
-//     const contractAddress = DEPLOYED_CONTRACTS[accessType.replace('_', '').toUpperCase()] || null;
-
-//     // ✅ Create hash for on-chain reference
-//     const videoId = `video_${Date.now()}`;
-//     const videoHash = crypto.createHash('sha256')
-//       .update(`${videoId}|${videoUrl}|${req.user.walletAddress}`)
-//       .digest('hex');
-
-//     // ✅ If premium, fund contract (only if price > 0)
-//     if (accessType !== 'FREE' && contractAddress && parseFloat(price) > 0) {
-//       await rpc.call('sendtoaddress', [contractAddress, parseFloat(price)]);
-//     }
-
-//     // ✅ Save video metadata in DB
-//     const video = await prisma.video.create({
-//       data: {
-//         videoId,
-//         title,
-//         description,
-//         videoUrl,
-//         thumbnailUrl,
-//         categoryId: '1', // default category for testing
-//         tags: tags ? tags.split(',') : [],
-//         accessType,
-//         price: accessType === 'PAY_PER_VIEW' ? parseFloat(price) : null,
-//         isPremium: accessType !== 'FREE',
-//         creatorId: userId,
-//         status: 'READY',
-//         videoHash,
-//         contractAddress,
-//         duration: Math.floor(Math.random() * 600 + 60),
-//         fileSize: BigInt(videoFile.size),
-//       },
-//     });
-
-//     // ✅ Send notification
-//     await prisma.notification.create({
-//       data: {
-//         type: 'VIDEO_APPROVED',
-//         title: '🎬 Video LIVE!',
-//         message: `Your video "${title}" is now accessible via contract: ${contractAddress?.slice(0, 16)}...`,
-//         userId,
-//       },
-//     });
-
-//     // ✅ Response
-//     res.json({
-//       success: true,
-//       message: `🎥 "${title}" LIVE on ${contractAddress?.slice(0, 16)}...!`,
-//       video: {
-//         id: video.id,
-//         title,
-//         contractAddress,
-//         videoHash,
-//         accessType,
-//         price: video.price,
-//       },
-//     });
-
-//   } catch (error) {
-//     console.error('Upload error:', error);
-//     res.status(500).json({ success: false, error: error.message });
-//   }
-// };
-
-
 export const uploadVideoWithContract = async (req, res) => {
   try {
-    const {
-      title,
-      description,
-      category,
-      tags,
-      accessType = "FREE",
-      price = "0",
-      // Remove these - we'll generate them in backend
-      // contractAddress,
-      // transactionHash,
-    } = req.body;
-
+    const { title, description, category, tags, accessType = "FREE", price = "0" } = req.body;
     const userId = req.user.id;
 
-    // ------------------------------------------
-    // 1️⃣ Upload Video to Backblaze B2
-    // ------------------------------------------
+    // 1️⃣ Upload Video
     const videoFile = req.files.video[0];
     const videoName = `videos/${Date.now()}_${videoFile.originalname}`;
     const videoUrl = await uploadToB2(videoName, videoFile.buffer, videoFile.mimetype);
@@ -268,50 +170,46 @@ export const uploadVideoWithContract = async (req, res) => {
       thumbnailUrl = await uploadToB2(thumbName, thumbFile.buffer, thumbFile.mimetype);
     }
 
-    // ------------------------------------------
-    // 2️⃣ DEPLOY CONTRACT (Backend Only - for PAY_PER_VIEW)
-    // ------------------------------------------
+    // 2️⃣ Deploy Contract (PAY_PER_VIEW)
     let contractAddress = null;
     let transactionHash = null;
     let videoHash = null;
+    let redeemScript = null;   
 
     if (accessType === "PAY_PER_VIEW") {
       try {
-        // Get creator's wallet info
-        const creatorInfo = await rpc.call('getaddressinfo', [req.user.walletAddress]);
-        
-        // Convert price to satoshis
-        const priceSatoshis = Math.round(parseFloat(price) * 100000000);
-        
-        // Generate video hash
+        // Get creator's pubkey
+        const addressInfo = await rpc.call('getaddressinfo', [req.user.walletAddress]);
+        if (!addressInfo.pubkey) throw new Error("Wallet has no public key");
+
+        const creatorPubkey = addressInfo.pubkey;
+        const priceSatoshis = Math.round(parseFloat(price) * 1e8);
+
+        // Video hash
         const videoId = `video_${Date.now()}`;
-        videoHash = crypto.createHash("sha256")
-          .update(`${videoId}|${videoUrl}|${creatorInfo.pubkey}`)
+        const videoIdHash = crypto.createHash("sha256")
+          .update(`${videoId}|${videoUrl}|${creatorPubkey}`)
           .digest("hex");
 
-        // Deploy PayPerView contract
-        const contractData = await deployPayPerViewContract(priceSatoshis, creatorInfo.pubkey, videoHash);
-        
+        // Deploy contract
+        const contractData = await deployPayPerViewContract(
+          priceSatoshis,
+          creatorPubkey,
+          videoIdHash
+        );
+
         contractAddress = contractData.address;
         transactionHash = contractData.txHash;
-
-        console.log(`✅ Contract deployed for video: ${title}`);
-        console.log(`   Address: ${contractAddress}`);
-        console.log(`   TX: ${transactionHash}`);
-        console.log(`   Price: ${price} BCH`);
+        redeemScript = contractData.bytecode;  
+        videoHash = videoIdHash;
 
       } catch (contractError) {
-        console.error("❌ Contract deployment failed:", contractError);
-        // Continue without contract - video will be saved as regular upload
-        // Or you can choose to fail the entire upload:
-        // return res.status(500).json({ 
-        //   success: false, 
-        //   error: `Contract deployment failed: ${contractError.message}` 
-        // });
+        console.error("Contract deployment failed:", contractError);
+        return res.status(500).json({ success: false, error: contractError.message });
       }
     }
 
-    // If no contract was deployed (FREE content or contract failed), generate basic hash
+    // Free content → generate basic video hash
     if (!videoHash) {
       const videoId = `video_${Date.now()}`;
       videoHash = crypto.createHash("sha256")
@@ -319,9 +217,7 @@ export const uploadVideoWithContract = async (req, res) => {
         .digest("hex");
     }
 
-    // ------------------------------------------
     // 3️⃣ Store in DB
-    // ------------------------------------------
     const video = await prisma.video.create({
       data: {
         videoId: `video_${Date.now()}`,
@@ -339,14 +235,13 @@ export const uploadVideoWithContract = async (req, res) => {
         videoHash,
         contractAddress,
         transactionHash,
+         redeemScript,
         duration: Math.floor(Math.random() * 600 + 60),
         fileSize: BigInt(videoFile.size),
       },
     });
 
-    // ------------------------------------------
     // 4️⃣ Notification
-    // ------------------------------------------
     let notificationMessage = `Your video "${title}" is now live.`;
     if (contractAddress) {
       notificationMessage = `Your PayPerView video "${title}" is LIVE at ${contractAddress.slice(0, 16)}...!`;
@@ -361,22 +256,14 @@ export const uploadVideoWithContract = async (req, res) => {
       },
     });
 
-    // ------------------------------------------
     // 5️⃣ Response
-    // ------------------------------------------
     const responseData = {
       success: true,
       message: `🎥 "${title}" uploaded successfully!`,
-      video: {
-        id: video.id,
-        title,
-        videoHash,
-        accessType,
-        price: video.price,
-      },
+      video: { id: video.id, title, videoHash, accessType, price: video.price, contractAddress,
+  redeemScript  },
     };
 
-    // Add contract data if available
     if (contractAddress) {
       responseData.contractAddress = contractAddress;
       responseData.transactionHash = transactionHash;
@@ -391,38 +278,34 @@ export const uploadVideoWithContract = async (req, res) => {
   }
 };
 
-// ------------------------------------------
-// CONTRACT DEPLOYMENT HELPER FUNCTION
-// ------------------------------------------
-async function deployPayPerViewContract(priceSatoshis, creatorPubKey, videoHash) {
+
+async function deployPayPerViewContract(price_satoshis, creatorPubkeyHex, videoIdHashHex) {
   try {
-    // Load your PayPerView contract JSON
-    const PAY_PER_VIEW_CONTRACT = JSON.parse(
+    const contractJson = JSON.parse(
       fs.readFileSync('./contracts_2/build/PayPerViewToken.json', 'utf8')
     );
 
-    // Use the debug bytecode (hex) from your JSON
-    const bytecode = PAY_PER_VIEW_CONTRACT.debug?.bytecode || PAY_PER_VIEW_CONTRACT.bytecode;
+    const template = contractJson.debug.bytecode;
+    if (!template) throw new Error("debug.bytecode missing in JSON");
 
-    // Compile contract to get address
-    const decodeResult = await rpc.call('decodescript', [bytecode]);
-    const contractAddress = decodeResult.p2sh;
+    // Convert price → hex
+    const priceHex = price_satoshis.toString(16);
+    const priceHexPadded = priceHex.length % 2 === 1 ? '0' + priceHex : priceHex;
 
-    // Fund the contract with initial amount (optional - or let users fund it)
-    // const txHash = await rpc.call('sendtoaddress', [contractAddress, priceSatoshis / 100000000]);
+    // Replace placeholders for 3 inputs
+    let bytecode = template
+      .replace('55', creatorPubkeyHex)   // pubkey
+      .replace('7a', priceHexPadded)     // price
+      .replace('cd', videoIdHashHex);    // videoIdHash
 
-    // // Mine blocks to confirm
-    // const minerAddress = await rpc.call('getnewaddress');
-    // await rpc.call('generatetoaddress', [2, minerAddress]);
+    // Decode into P2SH address
+    const decoded = await rpc.call('decodescript', [bytecode]);
+    if (!decoded.p2sh) throw new Error("Failed to get P2SH address");
 
-    return {
-      address: contractAddress,
-      txHash: null,
-      bytecode: bytecode
-    };
+    return { address: decoded.p2sh, txHash: null, bytecode };
 
   } catch (error) {
-    console.error("Contract deployment error:", error);
-    throw new Error(`Failed to deploy contract: ${error.message}`);
+    throw new Error(`Contract creation failed: ${error.message}`);
   }
 }
+

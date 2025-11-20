@@ -1,7 +1,6 @@
 import prisma from '../config/db.js';
 import axios from 'axios';
 import { getSignedUrl } from '../utils/b2SignedUrl.js';
-import { DEPLOYED_CONTRACTS } from '../config/contract.js';
 import http from 'http';
 
 
@@ -54,19 +53,31 @@ class BCHRPC {
 }
  const rpc = new BCHRPC(18443, 'bchuser', 'bchpass');
 
-// **1. GET WATCH VIDEO** (Main Watch Page)
+
 export const getWatchVideo = async (req, res) => {
   try {
     let { id } = req.params;
     if (id.startsWith('id=')) id = id.slice(3);
     const userId = req.user.id;
-    console.log(id,userId);
-    console.log(typeof id, id); 
 
-    // **FETCH FROM DATABASE**
+    // FETCH FROM DATABASE
     let video = await prisma.video.findUnique({
       where: { id },
-      include: {
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        videoUrl: true,
+        thumbnailUrl: true,
+        duration: true,
+        createdAt: true,
+        accessType: true,
+        price: true,
+        isPremium: true,
+        contractAddress: true,
+        videoHash: true,
+        status: true,
+
         creator: { 
           select: { 
             id: true, 
@@ -76,9 +87,7 @@ export const getWatchVideo = async (req, res) => {
             walletAddress: true 
           } 
         },
-        _count: { 
-          select: { likes: true, views: true } 
-        },
+        _count: { select: { likes: true, views: true } },
         purchases: { where: { userId } },
         comments: {
           take: 10,
@@ -91,16 +100,14 @@ export const getWatchVideo = async (req, res) => {
       }
     });
 
-
     if (!video) {
-  return res.status(404).json({
-    success: false,
-    message: 'Video not found'
-  });
-}
+      return res.status(404).json({
+        success: false,
+        message: 'Video not found'
+      });
+    }
 
-
-    // **GENERATE SIGNED URLS**
+    // GENERATE SIGNED URLS
     const videoPath = video.videoUrl?.split('/file/blazetube/')[1];
     const thumbPath = video.thumbnailUrl?.split('/file/blazetube/')[1];
     
@@ -109,33 +116,38 @@ export const getWatchVideo = async (req, res) => {
       thumbPath ? getSignedUrl(thumbPath) : dummyVideos[0].thumbnail
     ]);
 
-    // **VERIFY ACCESS** (UNLOCKING LOGIC)
+    // VERIFY ACCESS — THIS IS THE TRUTH
     const userCanAccess = await verifyAccess(video, userId);
     
-    // **GET RELATED VIDEOS & BCH PRICE**
+    // GET RELATED + PRICE
     const [relatedVideos, bchPrice] = await Promise.all([
       getRelatedVideos(video.categoryId, id),
       getBchPrice()
     ]);
 
-    // **FORMAT RESPONSE**
+    // FORMAT VIDEO (you can keep this, but we will override critical fields)
     const formattedVideo = formatVideo(video, signedVideoUrl, signedThumbnailUrl, userCanAccess, bchPrice);
-
+console.log("Formatted : ",formattedVideo);
+    // FINAL RESPONSE — THIS IS THE FIX
     res.json({
       success: true,
-      video: formattedVideo,
+      video: {
+        ...formattedVideo,
+        userCanAccess: userCanAccess,           // ← FORCE THE REAL VALUE
+        isPremium: video.accessType === "PAY_PER_VIEW",
+        contractAddress: video.contractAddress,
+        videoHash: video.videoHash,
+        videoUrl: userCanAccess ? signedVideoUrl : null,  // ← Also force correct URL
+      },
       relatedVideos,
       bchPrice
     });
 
   } catch (error) {
     console.error('Watch video error:', error);
-    // const dummy = dummyVideos[0];
     res.json({
       success: false,
-    //   video: formatDummyVideo(dummy),
-    //   relatedVideos: getDummyRelatedVideos(dummy.category),
-    //   bchPrice: 470
+      error: error.message || "Something went wrong"
     });
   }
 };
@@ -264,50 +276,130 @@ export const likeVideo = async (req, res) => {
   }
 };
 
-// **5. TIP VIDEO**
+
+// 5. PURCHASE VIDEO (Frontend sends payment, backend just records it)
 export const purchaseVideo = async (req, res) => {
   try {
     const { id: videoId } = req.params;
     const userId = req.user.id;
+    const { txHash } = req.body;  // ← Frontend sends this after paying
 
-    // 1️⃣ Fetch video & user wallet
-    const video = await prisma.video.findUnique({ where: { id: videoId } });
-    if (!video.isPremium) return res.status(400).json({ success: false, error: 'Video is free' });
-
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    const creator = await prisma.user.findUnique({ where: { id: video.creatorId } });
-
-    if (!user.walletAddress || !creator.walletAddress) {
-      return res.status(400).json({ success: false, error: 'Wallet addresses missing' });
+    // 1. Validate input
+    if (!txHash || typeof txHash !== 'string' || txHash.length !== 64) {
+      return res.status(400).json({
+        success: false,
+        error: 'Valid transaction hash (txHash) is required'
+      });
     }
 
-    // 2️⃣ Construct & send transaction (from user → contract/creator)
-    const txHash = await sendBchTransaction(user.walletAddress, DEPLOYED_CONTRACTS.PAY_PER_VIEW, video.price);
-
-    // 3️⃣ Record purchase
-    const purchase = await prisma.videoPurchase.create({
-      data: { amount: video.price, txHash, videoId, userId }
-    });
-
-    // 4️⃣ Add earnings to creator
-    await prisma.earning.create({
-      data: { amount: video.price, type: 'VIDEO_SALE', userId: creator.id, videoId }
-    });
-
-    // 5️⃣ Notify creator
-    await prisma.notification.create({
-      data: {
-        type: 'VIDEO_PURCHASED',
-        title: '🎬 Video Sold!',
-        message: `${user.username} purchased your video for ${video.price} BCH`,
-        userId: creator.id
+    // 2. Fetch video
+    const video = await prisma.video.findUnique({
+      where: { id: videoId },
+      select: {
+        id: true,
+        title: true,
+        price: true,
+        accessType: true,
+        contractAddress: true,
+        creatorId: true
       }
     });
 
-    res.json({ success: true, purchase, message: '✅ Video UNLOCKED successfully!' });
+    if (!video) {
+      return res.status(404).json({ success: false, error: 'Video not found' });
+    }
+
+    if (video.accessType !== "PAY_PER_VIEW") {
+      return res.status(400).json({ success: false, error: 'This video is not premium' });
+    }
+
+    // 3. Check if already purchased
+    const existingPurchase = await prisma.videoPurchase.findFirst({
+      where: { videoId, userId }
+    });
+
+    if (existingPurchase) {
+      return res.json({
+        success: true,
+        alreadyPurchased: true,
+        message: 'You already own this video!'
+      });
+    }
+
+    // 4. (Optional) Verify txHash on-chain — RECOMMENDED for production
+    // Uncomment when you want full security
+    /*
+    try {
+      const tx = await rpc.call('getrawtransaction', [txHash, true]);
+      if (!tx) throw new Error('TX not found');
+
+      // Verify: one of the outputs goes to the contract address
+      const paidToContract = tx.vout.some(output => 
+        output.scriptPubKey?.addresses?.includes(video.contractAddress)
+      );
+
+      if (!paidToContract) {
+        return res.status(400).json({ success: false, error: 'Payment not sent to contract' });
+      }
+
+      // Optional: verify amount ≥ video.price
+      const paidAmount = tx.vout
+        .filter(o => o.scriptPubKey?.addresses?.includes(video.contractAddress))
+        .reduce((sum, o) => sum + (o.value || 0), 0);
+
+      if (paidAmount < video.price) {
+        return res.status(400).json({ success: false, error: 'Insufficient payment' });
+      }
+    } catch (err) {
+      return res.status(400).json({ success: false, error: 'Invalid transaction: ' + err.message });
+    }
+    */
+
+    // 5. Record purchase in DB
+    const purchase = await prisma.videoPurchase.create({
+      data: {
+        amount: video.price,
+        txHash,
+        videoId,
+        userId,
+        contractAddress:video.contractAddress
+      }
+    });
+
+    // 6. Record earnings for creator
+    await prisma.earning.create({
+      data: {
+        amount: video.price,
+        type: 'VIDEO_SALE',
+        userId: video.creatorId,
+        videoId
+      }
+    });
+
+    // 7. Notify creator
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    await prisma.notification.create({
+      data: {
+        type: 'VIDEO_PURCHASED',
+        title: 'Video Sold!',
+        message: `${user.username} purchased "${video.title}" for ${video.price} BCH`,
+        userId: video.creatorId
+      }
+    });
+
+    // SUCCESS
+    res.json({
+      success: true,
+      message: 'Video unlocked successfully!',
+      purchase
+    });
 
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error('Purchase error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Purchase failed'
+    });
   }
 };
 
@@ -328,7 +420,8 @@ export const tipVideo = async (req, res) => {
     }
 
     // 2️⃣ Construct & send transaction (from user → tip contract)
-    const txHash = await sendBchTransaction(user.walletAddress, DEPLOYED_CONTRACTS.TIP, amount);
+    const txHash = await sendBchTransaction(user.walletAddress, video.contractAddress, amount);
+
 
     // 3️⃣ Record tip
     const tip = await prisma.tip.create({
@@ -480,7 +573,7 @@ export async function getRelatedVideos(categoryId, excludeId) {
     };
   }));
 
-  return related.length > 0 ? related : getDummyRelatedVideos('Blockchain');
+  return  related ;
 }
 
 // **GET BCH PRICE**

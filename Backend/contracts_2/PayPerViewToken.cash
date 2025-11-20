@@ -1,18 +1,35 @@
 pragma cashscript ^0.12.0;
 
 contract PayPerViewToken(
-    pubkey creatorPubkey,
-    int price,
-    bytes20 creatorPkh
+    pubkey creator,       // Creator's public key
+    bytes32 videoIdHash,  // Hash representing the video
+    int priceSats         // Minimum price to unlock
 ) {
-    function pay(sig viewerSig) {
-        // Ensure payment meets the price
-        require(tx.outputs[0].value >= price);
 
-        // Ensure the first output sends to the creator using correct P2PKH syntax
-        require(tx.outputs[0].lockingBytecode == new LockingBytecodeP2PKH(creatorPkh));
+    /**
+     * Withdraw function
+     * Creator can withdraw funds after payment
+     * @param s Signature of the creator
+     * @param totalFunds Total amount sent to the contract
+     */
+    function withdraw(sig s, int totalFunds) {
+        // Verify creator's signature
+        require(checkSig(s, creator));
 
-        // Ensure viewer provides valid signature
-        require(checkSig(viewerSig, creatorPubkey));
+        // Ensure funds sent are >= required price
+        require(totalFunds >= priceSats);
+    }
+
+    /**
+     * Watch function
+     * Viewer must provide correct video ID hash to unlock
+     * @param id Hash of the video
+     */
+    function watch(bytes32 id) {
+        // Verify correct video
+        require(id == videoIdHash);
+
+        // Payment verification happens in the backend via `txHash`
+        // This function doesn't move funds, only gates access
     }
 }

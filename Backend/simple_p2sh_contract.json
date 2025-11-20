@@ -1,0 +1,7 @@
+{
+  "contractAddress": "bchreg:pp23ndhny8j7s0qszjx805spukpr9tejnvuefmdn06",
+  "ownerAddress": "bchreg:qp8c7mgn4shfxv7qwqtmc5hg5lkyce0qv55c6chasx",
+  "ownerPrivkey": "cUByBbkoXMR5dWJNvkP7VCp9yaE2XGNpuWukbJcnFTTwxvmLHXUh",
+  "redeemScript": "51210263f844cdcbc7cc83b991082df63b52cd5f12c34f0cec9da3e725d8f31dc14d4f51ae",
+  "type": "1-of-1_MULTISIG"
+}

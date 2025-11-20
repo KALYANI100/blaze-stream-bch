@@ -21,6 +21,35 @@ import {
 import { VideoCard } from "@/components/VideoCard";
 import { useNavigate } from "react-router-dom";
 
+
+class BCHRPC {
+  private url = "http://localhost:3001/api/bchrpc";
+  private auth = "Basic " + btoa("bchuser:bchpass");
+
+  async call<T>(method: string, params: unknown[] = []): Promise<T> {
+    const response = await fetch(this.url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: this.auth,
+      },
+      body: JSON.stringify({
+        jsonrpc: "1.0",
+        id: "blaze",
+        method,
+        params,
+      }),
+    });
+
+    const data = await response.json();
+    if (data.error) throw new Error(data.error.message || "RPC Error");
+    return data.result as T;
+  }
+}
+
+const rpc = new BCHRPC();
+
+
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
@@ -78,8 +107,78 @@ const Dashboard = () => {
       setLoading(false);
     }
   };
+ 
 
-  // **2. UPLOAD VIDEO - REAL API**
+interface Wallet {
+  address: string;
+  privateKey: string;
+  wif: string;
+}
+
+interface Video {
+  contractAddress: string;
+  title: string;
+  redeemScript:string;
+  // Add other video properties as needed
+}
+
+
+const handleWithdrawFromVideo = async (video: Video) => {
+  try {
+    if (!video.contractAddress) {
+      alert("No contract address for this video");
+      return;
+    }
+
+    // Get connected wallet
+    const connectedWallet = localStorage.getItem("connectedWallet");
+    if (!connectedWallet) {
+      alert("No wallet connected");
+      return;
+    }
+
+    const wallets: Wallet[] = JSON.parse(localStorage.getItem("bchWallets") || "[]");
+    const creatorWallet = wallets.find((w) => w.address === connectedWallet);
+
+    if (!creatorWallet) {
+      alert("Connected wallet not found");
+      return;
+    }
+
+    // HARDCODED redeem script (same as your contract)
+   
+    // Call backend /withdraw route
+    const response = await fetch("http://localhost:3001/api/contract/", {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        // Optionally include your auth token if backend requires it
+        "Authorization": `Bearer ${localStorage.getItem("authToken") || ""}`
+      },
+      body: JSON.stringify({
+        contractAddress: video.contractAddress,
+        payoutAddress: creatorWallet.address,  // yes, backend needs the key to sign
+        creatorAddress: creatorWallet.address,
+        redeemScriptHex:video.redeemScript
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      alert(`✅ Withdrawal successful!\nTXID: ${data.txid}\nAmount: ${(data.withdrawnSats / 1e8).toFixed(6)} BCH`);
+      fetchDashboardData();
+    } else {
+      alert(`❌ Withdrawal failed: ${data.error}`);
+      console.error(data);
+    }
+
+  } catch (err) {
+    console.error("Withdraw error:", err);
+    alert("Withdraw failed: " + (err?.message ?? "Unknown error"));
+  }
+};
+
   const handleUploadVideo = async (e) => {
     e.preventDefault();
     if (!files.video) {
@@ -381,6 +480,19 @@ const Dashboard = () => {
                       {...video} 
                       showContract={true} 
                     />
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200">
+  <Button
+    size="sm"
+    className="bg-green-600 hover:bg-green-700 text-white font-medium shadow-lg"
+    onClick={(e) => {
+      e.stopPropagation();
+      handleWithdrawFromVideo(video);
+    }}
+  >
+    <DollarSign className="w-4 h-4 mr-1" />
+    Withdraw Earnings
+  </Button>
+</div>
                     <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <Button size="sm" variant="outline" className="bg-background/90 backdrop-blur-sm">
                         <Settings className="w-4 h-4" />

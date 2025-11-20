@@ -107,10 +107,7 @@ model Video {
   publishedAt    DateTime?
   blockNumber    Int?
   videoHash      String?     @unique
-
-  contractAddress String?
-transactionHash String?
-
+ redeemScript    String? 
 
   creator        User        @relation(fields: [creatorId], references: [id])
   creatorId      String
