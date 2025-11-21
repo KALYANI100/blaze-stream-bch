@@ -1,10 +1,9 @@
-```markdown
-# Blaze Stream BCH 🚀
+Blaze Stream BCH 🚀
 
 Blaze Stream BCH is a decentralized video streaming platform built on BitcoinCash, leveraging smart contracts and Cashtokens. It empowers creators to monetize content directly, enforces secure access control, and automates royalties and tipping — all in a **trustless, transparent environment.
 
 ---
-
+```markdown
 ## 🔹 Quick Demo Setup (Hackathon-Friendly)
 
 1. Clone the repository
