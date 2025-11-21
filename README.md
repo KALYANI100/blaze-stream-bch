@@ -7,7 +7,7 @@ Blaze Stream BCH is a decentralized video streaming platform built on BitcoinCas
 ## 🔹 Quick Demo Setup (Hackathon-Friendly)
 
 1. Clone the repository
-```bash
+
 git clone https://github.com/KALYANI100/blaze-stream-bch.git
 cd blaze-stream-bch
 ````
