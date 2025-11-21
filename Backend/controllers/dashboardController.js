@@ -1,6 +1,6 @@
 import prisma from '../config/db.js';
 import { uploadToB2 } from '../utils/b2.js';
-import { DEPLOYED_CONTRACTS, CREATOR_WALLET } from '../config/contract.js';
+// import { DEPLOYED_CONTRACTS, CREATOR_WALLET } from '../config/contract.js';
 import { getSignedUrl } from '../utils/b2SignedUrl.js';
 import multer from 'multer';
 import crypto from 'crypto';
